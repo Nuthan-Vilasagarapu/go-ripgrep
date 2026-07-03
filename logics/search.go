@@ -3,6 +3,7 @@ package logics
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -21,18 +22,29 @@ var (
 	files = []File{}
 )
 
-func searchFile(current_dir, word, name string, ignoreCase, ignoreDot, readGit bool, root string) {
+func searchFile(current_dir, word, name string, ignoreCase, ignoreDot, readGit, gitIgnore bool, root string) {
 	entries, _ := os.ReadDir(current_dir)
+	var skipfiles []string
+	if gitIgnore {
+		val, _ := os.ReadFile(".gitignore")
+		skipdata := string(val)
+		skipfiles = strings.Split(skipdata, "\n")
+	}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			if entry.Name() == ".git" && readGit == false {
 				continue
 			}
 			name += entry.Name() + "/"
-			searchFile(current_dir+"/"+entry.Name(), word, name, ignoreCase, ignoreDot, readGit, root)
+			searchFile(current_dir+"/"+entry.Name(), word, name, ignoreCase, ignoreDot, readGit, gitIgnore, root)
 			name = ""
 		} else {
-			if strings.Contains(entry.Name(), ".") {
+			if !slices.Contains(skipfiles, entry.Name()) {
+				fileInfo, _ := entry.Info()
+				if fileInfo.Mode().Perm()&0111 != 0 {
+					continue
+				}
+
 				if root != "" && root != entry.Name() {
 					continue
 				}
@@ -40,14 +52,12 @@ func searchFile(current_dir, word, name string, ignoreCase, ignoreDot, readGit b
 				if ignoreDot && entry.Name()[0] == '.' {
 					continue
 				}
-
 				data, _ := os.ReadFile(current_dir + "/" + entry.Name())
 				content := string(data)
 				if ignoreCase {
 					word = strings.ToLower(word)
 					content = strings.ToLower(content)
 				}
-
 				if strings.Contains(content, word) {
 					lines := strings.Split(content, "\n")
 					foundlines := []Found{}
@@ -95,7 +105,7 @@ func Search(
 	current_dir := os.Getenv("PWD")
 	name := ""
 	//current_dir := "/home/coder/Projects/GoLearning/"
-	searchFile(current_dir, searchArgs.SearchStr, name, searchArgs.IngoreCase, searchArgs.IgnoreDotfile, searchArgs.ReadFromGit, searchArgs.Root)
+	searchFile(current_dir, searchArgs.SearchStr, name, searchArgs.IngoreCase, searchArgs.IgnoreDotfile, searchArgs.ReadFromGit, searchArgs.ReadFromGitIgnore, searchArgs.Root)
 	Word := "\033[1;41m" + searchArgs.SearchStr + "\033[0m"
 	printing(files, searchArgs.SearchStr, Word)
 }
